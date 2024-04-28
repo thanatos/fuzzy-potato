@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+#the-list {
+	display: grid;
+	grid-template-columns: 1fr auto auto auto auto;
+	row-gap: 8px;
+}
+
+.table-row {
+	display: grid;
+	grid-column: 1 / -1;
+	grid-template-columns: subgrid;
+	border-top: 1px solid lightgrey;
+	border-bottom: 1px solid lightgrey;
+	padding: 4px;
+}
+
+.table-row.in-cart {
+	background: lightgreen;
+}
+
+.icon-btn {
+	cursor: pointer;
+	width: 1em;
+	padding-right: 4px;
+	padding-left: 4px;
+}
+
+.price-widget {
+	font-size: 20pt;
+	font-family: monospace;
+}
+.price-drag-rect {
+	margin-top: 0.5em;
+	height: 2.5em;
+	width: 100%;
+	background: lightgrey;
+	border: 1px solid grey;
+}
+
+dialog::backdrop {
+  background-image: linear-gradient(
+    45deg,
+    magenta,
+    rebeccapurple,
+    dodgerblue,
+    green
+  );
+  opacity: 0.75;
+}
+
+dialog.generic-dialog > div {
+	display: flex;
+	flex-direction: column;
+}
+dialog.generic-dialog > div > div.buttons {
+	display: flex;
+	flex-direction: row;
+	justify-content: end;
+	gap: 0.75em;
+	margin-top: 0.5em;
+}
+dialog.generic-dialog > div > div.dialog-x {
+	display: flex;
+	flex-direction: row;
+	justify-content: end;
+}
+</style>
+<script type="module">
+import {modalDialog} from '/js/dialogs.js';
+
+let LIST_ID = null;
+let LIST = null;
+
+class GroceryList {
+	constructor(list_id) {
+		this.pending_update = null;
+		this.list_id = list_id;
+		this.list_data = null;
+	}
+
+	async update() {
+		if(this.pending_update !== null) {
+			this.pending_update.abort();
+			this.pending_update = null;
+		}
+		const abort_controller = new AbortController();
+		const pending_update = {
+			abort: function() {
+				pending_update.controller.abort(),
+			}
+		};
+		this.pending_update = pending_update;
+		const response_promise = await fetch(
+			`/api/list/${list_id}`,
+			{
+				signal: abort_controller.signal,
+			}
+		);
+		this
+	}
+}
+
+async function initList() {
+	const queryString = window.location.search;
+	const params = new URLSearchParams(queryString);
+	const list_id = Number(params.get('list_id'));
+	LIST_ID = list_id;
+
+	await updateList(list_id);
+}
+
+async function addToCart(list_id, item_name, item_index) {
+	await listAction(
+		list_id,
+		'add-to-cart',
+		{
+			item_name,
+			item_index,
+		},
+	);
+}
+
+async function removeFromCart(list_id, item_name, item_index) {
+	await listAction(
+		list_id,
+		'remove-from-cart',
+		{
+			item_name,
+			item_index,
+		},
+	);
+}
+
+async function shiftItem(original_index, new_index) {
+	const new_order = [];
+
+	function push_index(index) {
+		new_order.push([LIST[index]['item_name'], LIST[index]['item_index']])
+	}
+	let index = 0;
+	for(; index < LIST.length; ++index) {
+		if(new_index === new_order.length) {
+			push_index(original_index)
+		}
+		if(index != original_index) {
+			push_index(index)
+		}
+	}
+	if(new_index === new_order.length) {
+		push_index(original_index)
+	}
+
+	await listAction(
+		LIST_ID,
+		'update-order',
+		new_order,
+	);
+}
+
+async function updateList(list_id) {
+	const response = await fetch(`/api/list/${list_id}`);
+	const result = await response.json();
+	LIST = result;
+
+	const new_items = [];
+	for(let index = 0; index < result.length; ++index) {
+		const item = result[index];
+		const in_cart = item['in_cart'];
+
+		const row = document.createElement('div');
+		row.setAttribute('class', 'table-row');
+		if(in_cart) {
+			row.setAttribute('class', 'table-row in-cart');
+		}
+
+		const item_name = document.createElement('div');
+		item_name.textContent = item['item_name'];
+		row.appendChild(item_name);
+
+		if(in_cart) {
+			const btn = document.createElement('button');
+			btn.appendChild(document.createTextNode('Un-got'));
+			btn.onclick = () => {
+				removeFromCart(list_id, item['item_name'], item['item_index']);
+			}
+			row.appendChild(btn);
+		} else {
+			const btn = document.createElement('button');
+			btn.appendChild(document.createTextNode('Got it'));
+			btn.onclick = () => {
+				addToCart(list_id, item['item_name'], item['item_index']);
+			};
+			row.appendChild(btn);
+		}
+
+		if(index === 0) {
+			row.appendChild(document.createElement('div'));
+		} else {
+			const mvup = document.createElement('img');
+			mvup.setAttribute('src', '/images/caret-up.svg');
+			mvup.setAttribute('class', 'icon-btn');
+			mvup.onclick = () => {
+				shiftItem(index, index - 1);
+			};
+			row.appendChild(mvup);
+		}
+
+		if(index + 1 === result.length) {
+			row.appendChild(document.createElement('div'));
+		} else {
+			const mvdown = document.createElement('img');
+			mvdown.setAttribute('src', '/images/caret-down.svg');
+			mvdown.setAttribute('class', 'icon-btn');
+			mvdown.onclick = () => {
+				shiftItem(index, index + 1);
+			};
+			row.appendChild(mvdown);
+		}
+
+		const trash = document.createElement('img');
+		trash.setAttribute('src', '/images/trash.svg');
+		trash.setAttribute('class', 'icon-btn');
+		trash.onclick = () => {
+			const body = document.createElement('p');
+			body.textContent = (
+				`Delete the item “${item['item_name']}”: are you sure?`
+			);
+			const buttons = [
+				{
+					text: 'Nope, keep it!',
+					signal: 'cancel',
+				},
+				{
+					text: 'Delete',
+					signal: 'delete',
+				},
+			];
+			modalDialog(body, buttons).then((event) => {
+				if(event.event === 'button' && event.signal === 'delete') {
+					removeFromList(
+						list_id,
+						item['item_name'],
+						item['item_index'],
+					);
+				}
+			});
+		};
+		row.appendChild(trash);
+
+		new_items.push(row);
+	}
+	document.getElementById('the-list').replaceChildren(...new_items);
+}
+
+async function showPriceDialog(item_name) {
+	const promise_pkg = Promise.withResolvers();
+
+	const dialog = document.createElement('dialog');
+	const intro_p = document.createElement('p');
+	intro_p.textContent = `Enter the price of ${item_name}`;
+	dialog.appendChild(intro_p);
+	const price_el = document.createElement('input');
+	price_p.setAttribute('class', 'price');
+	price_p.setAttribute('type', 'text');
+	dialog.appendChild(price_el);
+
+	dialog.showModal();
+	return promise_pkg.promise;
+}
+
+async function addToList(list_id, item_name) {
+	await listAction(list_id, 'add-item', {item_name});
+}
+
+async function removeFromList(list_id, item_name, item_index) {
+	await listAction(list_id, 'remove-item', {item_name, item_index});
+}
+
+async function listAction(list_id, action, data) {
+	const opts = {
+		method: 'POST',
+		body: JSON.stringify(data),
+	};
+	await fetch(`/api/list/${list_id}?action=${action}`, opts);
+	await updateList(list_id);
+}
+
+addEventListener("DOMContentLoaded", (event) => {
+	initList();
+
+	const add_text_el = document.getElementById('add-text');
+	const do_item_add = function() {
+		const item_name = add_text_el.value;
+		addToList(LIST_ID, item_name);
+		add_text_el.value = '';
+	};
+	document.getElementById('add-btn').onclick = do_item_add;
+	add_text_el.onkeypress = (event) => {
+		if(event.key === 'Enter') {
+			do_item_add();
+		}
+	};
+});
+
+async function priceDialog(item_name) {
+	const intro_text = document.createElement('p');
+	intro_text.appendChild(document.createTextNode('Enter the price of “'));
+	const item_name_el = document.createElement('strong');
+	item_name_el.textContent = item_name;
+	intro_text.appendChild(item_name_el);
+	intro_text.appendChild(document.createTextNode('”:'));
+
+	const price = document.createElement('input');
+	price.setAttribute('type', 'text');
+	price.setAttribute('inputmode', 'decimal');
+	price.setAttribute('class', 'price-widget');
+
+	const drag_rect = document.createElement('div');
+	drag_rect.setAttribute('class', 'price-drag-rect');
+	const drag_state = {
+		current_drag: null,
+	};
+	drag_rect.onmousedown = (event) => {
+		drag_state.current_drag = {
+			start_x: event.screenX,
+			start_y: event.screenY,
+		};
+	};
+	drag_rect.onmousemove = (event) => {
+		if(drag_state.current_drag !== null) {
+			const delta_x = event.screenX - drag_state.current_drag.start_x;
+			const delta_y = event.screenY - drag_state.current_drag.start_y;
+			console.log(`Drag; delta = ${delta_x}, ${delta_y}`);
+		}
+	};
+	drag_rect.onmouseup = (event) => {
+		drag_state.current_drag = null;
+	};
+
+	const body = document.createDocumentFragment();
+	body.appendChild(intro_text);
+	body.appendChild(price);
+	body.appendChild(drag_rect);
+
+	const buttons = [
+		{
+			text: 'Cancel',
+			signal: 'cancel',
+		},
+		{
+			text: 'Dunno',
+			signal: 'no-price',
+		},
+		{
+			text: 'Enter Price',
+			signal: 'price-entered',
+		},
+	];
+
+	await modalDialog(body, buttons);
+}
+
+async function modalDialogExample() {
+	const t = document.createElement('template');
+	t.innerHTML = '<p>Hello there <b>world</b>. Isn\'t this a splending dialog?!</p><p>What\'s with the 🏳️‍🌈 Rainbow background you say?! Well rainbows are awesome.</p>';
+	const buttons = [
+		{text: 'Cancel', signal: 'cancel'},
+		{text: 'Okie dokie!', signal: 'ok'}
+	];
+	let result = await modalDialog(t.content, buttons);
+	console.log('Dialog result:', result);
+}
+</script>
+</head>
+<body>
+<p>List:</p>
+<div id="the-list">
+</div>
+<span id="item-count"></span>
+<p>
+Add to list:<br>
+<input type="text" id="add-text"><button id="add-btn">Add</button>
+</br>
+</body>
+</html>
