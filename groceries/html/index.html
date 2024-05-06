@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="favicon.svg" />
+<style>
+</style>
+<script type="module">
+async function resolveCurrentList() {
+	const response = await fetch('/api/list/?current');
+	const url = await response.json();
+	const a_el = document.createElement('a');
+	a_el.setAttribute('href', `/list?list_ref=${encodeURIComponent(url)}`);
+	a_el.textContent = 'Go to current list';
+	const span_el = document.getElementById('current-list');
+	span_el.replaceChildren(a_el);
+}
+
+addEventListener("DOMContentLoaded", (event) => {
+	resolveCurrentList();
+});
+</script>
+</head>
+<body>
+<span id="current-list">
+(currently list: …🤔)
+</span>
+</body>
+</html>

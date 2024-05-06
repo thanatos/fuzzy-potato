@@ -2,6 +2,7 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="favicon.svg" />
 <style>
 #the-list {
 	display: grid;
@@ -72,14 +73,14 @@ dialog.generic-dialog > div > div.dialog-x {
 <script type="module">
 import {modalDialog} from '/js/dialogs.js';
 
-let LIST_ID = null;
 let LIST = null;
 
 class GroceryList {
-	constructor(list_id) {
+	constructor(urlref) {
 		this.pending_update = null;
-		this.list_id = list_id;
-		this.list_data = null;
+		this.list_ref = urlref;
+		this.items = null;
+		this.on_update = null;
 	}
 
 	async update() {
@@ -90,32 +91,39 @@ class GroceryList {
 		const abort_controller = new AbortController();
 		const pending_update = {
 			abort: function() {
-				pending_update.controller.abort(),
-			}
+				abort_controller.abort();
+			},
 		};
 		this.pending_update = pending_update;
-		const response_promise = await fetch(
-			`/api/list/${list_id}`,
+		const response = await fetch(
+			this.list_ref,
 			{
 				signal: abort_controller.signal,
 			}
 		);
-		this
+		const items = await response.json();
+		this.items = items;
+		if(this.on_update !== null) {
+			this.on_update(this);
+		}
 	}
 }
 
-async function initList() {
+window.GroceryList = GroceryList;
+
+function initList() {
 	const queryString = window.location.search;
 	const params = new URLSearchParams(queryString);
-	const list_id = Number(params.get('list_id'));
-	LIST_ID = list_id;
+	const list_ref = params.get('list_ref');
 
-	await updateList(list_id);
+	LIST = new GroceryList(list_ref);
+	LIST.on_update = updateListUi;
+	LIST.update();
 }
 
-async function addToCart(list_id, item_name, item_index) {
+async function addToCart(list, item_name, item_index) {
 	await listAction(
-		list_id,
+		list,
 		'add-to-cart',
 		{
 			item_name,
@@ -124,9 +132,9 @@ async function addToCart(list_id, item_name, item_index) {
 	);
 }
 
-async function removeFromCart(list_id, item_name, item_index) {
+async function removeFromCart(list, item_name, item_index) {
 	await listAction(
-		list_id,
+		list,
 		'remove-from-cart',
 		{
 			item_name,
@@ -139,10 +147,13 @@ async function shiftItem(original_index, new_index) {
 	const new_order = [];
 
 	function push_index(index) {
-		new_order.push([LIST[index]['item_name'], LIST[index]['item_index']])
+		new_order.push([
+			LIST.items[index]['item_name'],
+			LIST.items[index]['item_index']
+		]);
 	}
 	let index = 0;
-	for(; index < LIST.length; ++index) {
+	for(; index < LIST.items.length; ++index) {
 		if(new_index === new_order.length) {
 			push_index(original_index)
 		}
@@ -155,20 +166,16 @@ async function shiftItem(original_index, new_index) {
 	}
 
 	await listAction(
-		LIST_ID,
+		LIST,
 		'update-order',
 		new_order,
 	);
 }
 
-async function updateList(list_id) {
-	const response = await fetch(`/api/list/${list_id}`);
-	const result = await response.json();
-	LIST = result;
-
+function updateListUi(list) {
 	const new_items = [];
-	for(let index = 0; index < result.length; ++index) {
-		const item = result[index];
+	for(let index = 0; index < list.items.length; ++index) {
+		const item = list.items[index];
 		const in_cart = item['in_cart'];
 
 		const row = document.createElement('div');
@@ -185,14 +192,14 @@ async function updateList(list_id) {
 			const btn = document.createElement('button');
 			btn.appendChild(document.createTextNode('Un-got'));
 			btn.onclick = () => {
-				removeFromCart(list_id, item['item_name'], item['item_index']);
+				removeFromCart(list, item['item_name'], item['item_index']);
 			}
 			row.appendChild(btn);
 		} else {
 			const btn = document.createElement('button');
 			btn.appendChild(document.createTextNode('Got it'));
 			btn.onclick = () => {
-				addToCart(list_id, item['item_name'], item['item_index']);
+				addToCart(list, item['item_name'], item['item_index']);
 			};
 			row.appendChild(btn);
 		}
@@ -209,7 +216,7 @@ async function updateList(list_id) {
 			row.appendChild(mvup);
 		}
 
-		if(index + 1 === result.length) {
+		if(index + 1 === list.items.length) {
 			row.appendChild(document.createElement('div'));
 		} else {
 			const mvdown = document.createElement('img');
@@ -242,7 +249,7 @@ async function updateList(list_id) {
 			modalDialog(body, buttons).then((event) => {
 				if(event.event === 'button' && event.signal === 'delete') {
 					removeFromList(
-						list_id,
+						list,
 						item['item_name'],
 						item['item_index'],
 					);
@@ -272,21 +279,21 @@ async function showPriceDialog(item_name) {
 	return promise_pkg.promise;
 }
 
-async function addToList(list_id, item_name) {
-	await listAction(list_id, 'add-item', {item_name});
+async function addToList(list, item_name) {
+	await listAction(list, 'add-item', {item_name});
 }
 
-async function removeFromList(list_id, item_name, item_index) {
-	await listAction(list_id, 'remove-item', {item_name, item_index});
+async function removeFromList(list, item_name, item_index) {
+	await listAction(list, 'remove-item', {item_name, item_index});
 }
 
-async function listAction(list_id, action, data) {
+async function listAction(list, action, data) {
 	const opts = {
 		method: 'POST',
 		body: JSON.stringify(data),
 	};
-	await fetch(`/api/list/${list_id}?action=${action}`, opts);
-	await updateList(list_id);
+	await fetch(`${list.list_ref}?action=${action}`, opts);
+	await list.update();
 }
 
 addEventListener("DOMContentLoaded", (event) => {
@@ -295,7 +302,7 @@ addEventListener("DOMContentLoaded", (event) => {
 	const add_text_el = document.getElementById('add-text');
 	const do_item_add = function() {
 		const item_name = add_text_el.value;
-		addToList(LIST_ID, item_name);
+		addToList(LIST, item_name);
 		add_text_el.value = '';
 	};
 	document.getElementById('add-btn').onclick = do_item_add;
