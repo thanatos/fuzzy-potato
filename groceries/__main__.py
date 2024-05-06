@@ -4,26 +4,51 @@ import datetime
 import json
 import logging
 from pathlib import Path
+import random
 import socket
 import tomllib
 
 from aiohttp import web
 import aiopg
+from uniseg import graphemecluster
 
 from . import crdb_driver
 from . import problems
 
 
 HTML = Path(__file__).parent / 'html'
+FOOD_EMOJI = '''
+☕️🌭🌮🌯🌰
+🌶️
+🌽🌾
+🍄🍅🍆🍇🍈🍉🍊🍋🍌🍍🍎🍏
+🍐🍑🍒🍓🍔🍕🍖🍗🍘🍙🍚🍛🍜🍝🍞🍟
+🍠🍡🍢🍣🍤🍥🍦🍧🍨🍩🍪🍫🍬🍭🍮🍯
+🍰🍱🍲🍳
+🥐🥑🥒🥓🥔🥕🥖🥗🥘🥙🥚🥛🥜🥝🥞🥟
+🥠🥡🥢🥣🥤🥥🥦🥧🥨🥩🥪🥫🥬🥭🥮🥯
+🧀🧁🧂🧃🧄🧅🧆🧇🧈🧉
+🫐🫑🫒🫓🫔🫘🫙🫚🫛
+'''
+FOOD_EMOJI = FOOD_EMOJI.replace('\n', '')
+FOOD_EMOJI = list(graphemecluster.grapheme_clusters(FOOD_EMOJI))
+
+
+def emoji(html: str) -> str:
+    emoji = ''.join(random.sample(FOOD_EMOJI, 3))
+    html = html.replace('{{ GROCERY_EMOJI }}', emoji)
+    return html
 
 
 async def fe_index(request):
-    p = (HTML / 'index.html').read_bytes()
+    p = (HTML / 'index.html').read_text(encoding='utf-8')
+    p = emoji(p)
     return html_response(p)
 
 
 async def fe_list(request):
-    p = (HTML / 'list.html').read_bytes()
+    p = (HTML / 'list.html').read_text(encoding='utf-8')
+    p = emoji(p)
     return html_response(p)
 
 
@@ -124,9 +149,9 @@ async def post_list(request):
         return bad_request()
 
 
-def html_response(d) -> web.Response:
+def html_response(html: str) -> web.Response:
     return web.Response(
-        body=d,
+        body=html.encode('utf-8'),
         headers={
             'Content-Type': 'text/html; charset=utf-8',
         }
