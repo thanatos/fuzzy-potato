@@ -1,12 +1,11 @@
 import contextlib
 import logging
 from pathlib import Path
-from typing import List
+from typing import Tuple
 
-import aiopg
 import psycopg_pool
 
-from .obj_model import ListItem
+from .obj_model import GroceryList, ListItem
 
 
 class NoSuchList(Exception):
@@ -105,29 +104,33 @@ class CrdbDriver:
             results = await cur.fetchall()
         return [str(r[0]) for r in results]
 
-    async def get_list(self, list_id) -> List[ListItem]:
+    async def get_list(self, list_id) -> Tuple[int, GroceryList]:
         list_id = self._parse_list_id(list_id)
-        async with self.pool.connection() as conn:
-            async with conn.transaction():
-                async with conn.cursor() as cur:
-                    await cur.execute(
-                        'SELECT sequence'
-                        ' FROM grocery_lists'
-                        ' WHERE list_id = %s;',
-                        (list_id,),
-                    )
-                    sequence_num = (await cur.fetchall())[0][0]
-                    await cur.execute(
-                        'SELECT item_name, item_index, in_cart, purchase_price FROM grocery_list_items WHERE list_id = %s ORDER BY item_index;',
-                        (list_id,),
-                    )
-                    results = await cur.fetchall()
+        async with self._in_transaction() as cur:
+            await cur.execute(
+                'SELECT sequence, created_at'
+                ' FROM grocery_lists'
+                ' WHERE list_id = %s;',
+                (list_id,),
+            )
+            row = (await cur.fetchall())[0]
+            sequence_num, created_at = row
+            await cur.execute(
+                'SELECT item_name, item_index, in_cart, purchase_price'
+                ' FROM grocery_list_items'
+                ' WHERE list_id = %s'
+                ' ORDER BY item_index;',
+                (list_id,),
+            )
+            raw_items = await cur.fetchall()
 
         def map_row(row):
             item_name, item_index, in_cart, purchase_price = row
             return ListItem(item_name, item_index, in_cart, purchase_price)
 
-        return sequence_num, [map_row(row) for row in results]
+        items = [map_row(row) for row in raw_items]
+        grocery_list = GroceryList(created_at=created_at, items=items)
+        return sequence_num, grocery_list
 
     async def add_item(self, list_id, item_name):
         list_id = self._parse_list_id(list_id)

@@ -9,7 +9,6 @@ import socket
 import tomllib
 
 from aiohttp import web
-import aiopg
 from uniseg import graphemecluster
 
 from . import crdb_driver
@@ -32,6 +31,21 @@ FOOD_EMOJI = '''
 '''
 FOOD_EMOJI = FOOD_EMOJI.replace('\n', '')
 FOOD_EMOJI = list(graphemecluster.grapheme_clusters(FOOD_EMOJI))
+
+
+def error_handling(request_handler):
+    async def error_handling_wrapper(request):
+        try:
+            return await request_handler(request)
+        except NeedQVar as err:
+            qvar = err.missing_var
+            return problems.problem(
+                400,
+                problem_type = None,
+                detail=f'Need query string parameter {qvar!r}'
+            )
+
+    return error_handling_wrapper
 
 
 def emoji(html: str) -> str:
@@ -66,9 +80,10 @@ async def get_list_collection(request):
             return json_response([f'list/{i}' for i in lists])
 
 
+@error_handling
 async def post_list_collection(request):
     driver = request.app['db_driver']
-    action = request.query.get('action')
+    action = need_qvar(request, 'action')
     if action == 'new':
         now = datetime.datetime.utcnow()
         new_list_id = await driver.new_list(now)
@@ -82,20 +97,24 @@ async def get_list(request):
     logging.info('Request for list %s', list_id)
     driver = request.app['db_driver']
     try:
-        sequence, items = await driver.get_list(list_id)
+        sequence, grocery_list = await driver.get_list(list_id)
     except crdb_driver.NoSuchList:
         return no_such_list()
 
-    json = []
-    for item in items:
-        json.append({
+    item_json = []
+    for item in grocery_list.items:
+        item_json.append({
             'item_name': item.name,
             'item_index': item.index,
             'in_cart': item.in_cart,
             'purchase_price': item.purchase_price,
         })
+    json = {
+        'created_at': grocery_list.created_at.isoformat(),
+        'items': item_json,
+    }
 
-    logging.info('%r', items)
+    logging.info('%r', grocery_list)
     extra_headers = {
         'ETag': f'W/"sequence-{sequence}"',
     }
@@ -180,6 +199,18 @@ def bad_request() -> web.Response:
 
 def not_found() -> web.Response:
     return problems.problem(404)
+
+
+class NeedQVar(Exception):
+    def __init__(self, missing_var):
+        self.missing_var = missing_var
+
+
+def need_qvar(request, key):
+    if key in request.query:
+        return request.query[key]
+    else:
+        raise NeedQVar(key)
 
 
 def no_such_list() -> web.Response:

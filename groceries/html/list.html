@@ -80,6 +80,7 @@ class GroceryList {
 	constructor(urlref) {
 		this.pending_update = null;
 		this.list_ref = urlref;
+		this.raw_json = null;
 		this.items = null;
 		this.on_update = null;
 	}
@@ -102,8 +103,9 @@ class GroceryList {
 				signal: abort_controller.signal,
 			}
 		);
-		const items = await response.json();
-		this.items = items;
+		const data = await response.json();
+		this.raw_json = data;
+		this.items = data['items'];
 		if(this.on_update !== null) {
 			this.on_update(this);
 		}
