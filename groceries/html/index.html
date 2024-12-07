@@ -17,14 +17,37 @@ async function resolveCurrentList() {
 	span_el.replaceChildren(a_el);
 }
 
+async function newList() {
+	const new_list_btn = document.getElementById('new-list-btn');
+	new_list_btn.disabled = true;
+	const opts = {
+		method: 'POST',
+	};
+	const response = await fetch(`/api/list?action=new`, opts);
+	const url = await response.json();
+	const our_url = new URL(window.location.href);
+	const html_url = `/list?list_ref=${encodeURIComponent(url)}`;
+	const browse_to = new URL(html_url, our_url);
+	window.location = browse_to;
+}
+
 addEventListener("DOMContentLoaded", (event) => {
 	resolveCurrentList();
+	const new_list_btn = document.getElementById('new-list-btn');
+	new_list_btn.onclick = function() {
+		newList();
+		return false;
+	};
 });
 </script>
 </head>
 <body>
+<p>
 <span id="current-list">
 (current list: …🤔)
 </span>
+<p>
+<p>
+<button id="new-list-btn">New list</button>
 </body>
 </html>
