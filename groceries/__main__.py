@@ -11,7 +11,7 @@ import tomllib
 from aiohttp import web
 from uniseg import graphemecluster
 
-from . import crdb_driver
+from . import postgres_driver
 from . import problems
 
 
@@ -98,7 +98,7 @@ async def get_list(request):
     driver = request.app['db_driver']
     try:
         sequence, grocery_list = await driver.get_list(list_id)
-    except crdb_driver.NoSuchList:
+    except postgres_driver.NoSuchList:
         return no_such_list()
 
     item_json = []
@@ -248,8 +248,8 @@ def static_js(path):
 async def load_db_driver(config):
     driver = config['driver']
     driver_type = driver['type']
-    if driver_type == 'cockroachdb':
-        return await crdb_driver.create_driver(driver)
+    if driver_type == 'postgres':
+        return await postgres_driver.create_driver(driver)
     else:
         raise NotImplementedError(f'No such database driver {driver_type!r}')
 

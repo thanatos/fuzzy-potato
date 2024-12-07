@@ -15,20 +15,29 @@ class NoSuchList(Exception):
 async def create_driver(toml_config):
     dsn = toml_config['dsn']
 
-    port = toml_config.get('port', 26257)
+    port = toml_config.get('port')
 
-    client_crt = Path(toml_config['client-crt'])
-    client_key = Path(toml_config['client-key'])
-    ca_crt = Path(toml_config['ca-crt'])
+    kwargs = {}
+    if port is not None:
+        kwargs['port'] = port
 
-    kwargs = {
-        'port': port,
-        'sslmode': 'verify-full',
-        'sslcert': client_crt,
-        'sslkey': client_key,
-        'sslrootcert': ca_crt,
-    }
-    logging.debug('CRDB driver, database kwargs = %r', kwargs)
+    if 'client_crt' in toml_config \
+            or 'client_key' in toml_config \
+            or 'ca_crt' in toml_config:
+        client_crt = Path(toml_config['client-crt'])
+        client_key = Path(toml_config['client-key'])
+        ca_crt = Path(toml_config['ca-crt'])
+        if port is None:
+            port = 5432
+        kwargs.update({
+            'sslmode': 'verify-full',
+            'sslcert': client_crt,
+            'sslkey': client_key,
+            'sslrootcert': ca_crt,
+            'port': port,
+        })
+
+    logging.debug('Postgres driver, database kwargs = %r', kwargs)
     import psycopg
     c = await psycopg.AsyncConnection.connect(dsn, **kwargs)
     print(f'c = {c!r}')
@@ -43,10 +52,10 @@ async def create_driver(toml_config):
     logging.debug('Pool opening.')
     await pool.open()
     logging.debug('Pool open.')
-    return CrdbDriver(pool)
+    return PgDriver(pool)
 
 
-class CrdbDriver:
+class PgDriver:
     def __init__(self, pool):
         self.pool = pool
 

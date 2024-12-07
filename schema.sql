@@ -1,3 +1,7 @@
+-- This used to be in CockroachDB
+-- This is now PostgreSQL.
+-- The only difference is replace "varchar" with "text"
+
 CREATE SEQUENCE grocery_lists_id_seq;
 
 CREATE TABLE grocery_lists (
@@ -5,13 +9,13 @@ CREATE TABLE grocery_lists (
 	-- Age / history of the list. Increments on change, to let clients know
 	-- their view is out of date.
 	sequence int4 NOT NULL DEFAULT 0,
-	created_at TIMESTAMP NOT NULL,
+	created_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE grocery_list_items (
 	list_id int4 NOT NULL REFERENCES grocery_lists,
-	item_name TEXT NOT NULL,
-	item_index INT2 NOT NULL,
+	item_name varchar NOT NULL,
+	item_index int2 NOT NULL,
 	in_cart BOOL NOT NULL,
 	purchase_price DECIMAL(7, 2),
 	PRIMARY KEY (list_id, item_name),
