@@ -5,6 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="favicon.svg" />
 <style>
+body {
+	margin: 0;
+}
+
+.lr-pad {
+	padding-left: 0.5em;
+	padding-right: 0.5em;
+}
+
+.butter-bar {
+	padding: 0.5em;
+	background: hsl(60 100% 75%);
+	border-bottom: 1px solid hsl(60 75% 50%);
+}
+
 #the-list {
 	display: grid;
 	grid-template-columns: 1fr auto auto auto auto;
@@ -17,7 +32,10 @@
 	grid-template-columns: subgrid;
 	border-top: 1px solid lightgrey;
 	border-bottom: 1px solid lightgrey;
-	padding: 4px;
+	padding-left: 0.5em;
+	padding-right: 0.5em;
+	padding-top: 4px;
+	padding-bottom: 4px;
 }
 
 .table-row.in-cart {
@@ -122,6 +140,21 @@ function initList() {
 	LIST = new GroceryList(list_ref);
 	LIST.on_update = updateListUi;
 	LIST.update();
+
+	checkIfCurrentList(list_ref);
+}
+
+async function checkIfCurrentList(our_list) {
+	const response = await fetch('/api/list/?current');
+	const url = await response.json();
+	// TODO: probably should make these relative-refs into just refs.
+	console.log(`Current list: ${url}\nOur list: ${our_list}`);
+	if(url !== our_list) {
+		const warning_bar = document.getElementById("not-current-list");
+		const a_el = warning_bar.querySelector('.current-list');
+		a_el.setAttribute('href', `/list?list_ref=${encodeURIComponent(url)}`);
+		warning_bar.style.display = '';
+	}
 }
 
 async function addToCart(list, item_name, item_index) {
@@ -387,13 +420,17 @@ async function modalDialogExample() {
 </script>
 </head>
 <body>
-<p>List:</p>
+<div id="not-current-list" class="butter-bar" style="display: none">
+  Bruh. 👋 This isn't the <a class="current-list">current list</a>.
+</div>
+<p class="lr-pad">List:</p>
 <div id="the-list">
 </div>
-<span id="item-count"></span>
-<p>
+<p class="lr-pad" id="item-count"></span>
+<p class="lr-pad">
 Add to list:<br>
 <input type="text" id="add-text"><button id="add-btn">Add</button>
 </br>
+</p>
 </body>
 </html>
