@@ -294,6 +294,7 @@ def main():
         web.get('/api/list', get_list_collection),
         web.get('/api/list/', get_list_collection),
         web.post('/api/list', post_list_collection),
+        web.post('/api/list/', post_list_collection),
         web.get('/api/list/{list_id}', get_list),
         web.post('/api/list/{list_id}', post_list),
         web.get('/images/caret-up.svg', cached_svg(HTML / 'caret-up.svg')),
