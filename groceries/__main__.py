@@ -1,6 +1,8 @@
 import argparse
 import asyncio
+import base64
 import datetime
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -54,14 +56,21 @@ def emoji(html: str) -> str:
     return html
 
 
+async def read_text_file(path):
+    def do_read():
+        return path.read_text(encoding='utf-8')
+
+    return await asyncio.get_running_loop().run_in_executor(None, do_read)
+
+
 async def fe_index(request):
-    p = (HTML / 'index.html').read_text(encoding='utf-8')
+    p = await read_text_file(HTML / 'index.html')
     p = emoji(p)
     return html_response(p)
 
 
 async def fe_list(request):
-    p = (HTML / 'list.html').read_text(encoding='utf-8')
+    p = await read_text_file(HTML / 'list.html')
     p = emoji(p)
     return html_response(p)
 
@@ -168,11 +177,20 @@ async def post_list(request):
         return bad_request()
 
 
+def gen_etag(data: bytes) -> str:
+    digest = base64.urlsafe_b64encode(
+        hashlib.sha256(data).digest()
+    ).decode('ascii')
+    return f'"{digest}"'
+
+
 def html_response(html: str) -> web.Response:
+    body = html.encode('utf-8')
     return web.Response(
-        body=html.encode('utf-8'),
+        body=body,
         headers={
             'Content-Type': 'text/html; charset=utf-8',
+            'ETag': gen_etag(body),
         }
     )
 
