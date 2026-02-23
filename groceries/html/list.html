@@ -22,7 +22,7 @@ body {
 
 #the-list {
 	display: grid;
-	grid-template-columns: 1fr auto auto auto auto;
+	grid-template-columns: auto 1fr auto auto auto auto;
 	row-gap: 8px;
 }
 
@@ -59,6 +59,11 @@ body {
 	width: 100%;
 	background: lightgrey;
 	border: 1px solid grey;
+}
+
+.drag-handle {
+	padding-right: 2px;
+	padding-left: 2px;
 }
 
 dialog::backdrop {
@@ -208,6 +213,28 @@ async function shiftItem(original_index, new_index) {
 	);
 }
 
+function editItem(item_div, item) {
+	if(item_div.getAttribute('data-being-editted') === 'true') {
+		return;
+	}
+
+	const edit_el = document.createElement('input');
+	edit_el.setAttribute('type', 'text');
+	edit_el.setAttribute('value', item['item_name']);
+	item_div.replaceChildren(edit_el);
+	item_div.setAttribute('data-being-editted', 'true');
+	edit_el.focus();
+}
+
+const PRELOADED_IMAGES = {
+	up_btn: (function() {
+		const mvup = document.createElement('img');
+		mvup.setAttribute('src', '/images/icons/fa/caret-up.svg');
+		mvup.setAttribute('class', 'icon-btn');
+		return mvup;
+	})(),
+};
+
 function updateListUi(list) {
 	const new_items = [];
 	for(let index = 0; index < list.items.length; ++index) {
@@ -220,8 +247,24 @@ function updateListUi(list) {
 			row.setAttribute('class', 'table-row in-cart');
 		}
 
+		const drag_handle = document.createElementNS(
+			'http://www.w3.org/2000/svg',
+			'svg',
+		);
+		const svg_use = document.createElementNS(
+			'http://www.w3.org/2000/svg',
+			'use',
+		);
+		svg_use.setAttributeNS(null, 'href', '#drag-handle');
+		drag_handle.appendChild(svg_use);
+		drag_handle.setAttributeNS(null, 'viewBox', '0 0 8 18');
+		drag_handle.setAttributeNS(null, 'width', '8');
+		drag_handle.setAttribute('class', 'drag-handle');
+		row.appendChild(drag_handle);
+
 		const item_name = document.createElement('div');
 		item_name.textContent = item['item_name'];
+		item_name.onclick = () => editItem(item_name, item);
 		row.appendChild(item_name);
 
 		if(in_cart) {
@@ -243,9 +286,7 @@ function updateListUi(list) {
 		if(index === 0) {
 			row.appendChild(document.createElement('div'));
 		} else {
-			const mvup = document.createElement('img');
-			mvup.setAttribute('src', '/images/caret-up.svg');
-			mvup.setAttribute('class', 'icon-btn');
+			const mvup = PRELOADED_IMAGES.up_btn.cloneNode();
 			mvup.onclick = () => {
 				shiftItem(index, index - 1);
 			};
@@ -256,7 +297,7 @@ function updateListUi(list) {
 			row.appendChild(document.createElement('div'));
 		} else {
 			const mvdown = document.createElement('img');
-			mvdown.setAttribute('src', '/images/caret-down.svg');
+			mvdown.setAttribute('src', '/images/icons/fa/caret-down.svg');
 			mvdown.setAttribute('class', 'icon-btn');
 			mvdown.onclick = () => {
 				shiftItem(index, index + 1);
@@ -265,7 +306,7 @@ function updateListUi(list) {
 		}
 
 		const trash = document.createElement('img');
-		trash.setAttribute('src', '/images/trash.svg');
+		trash.setAttribute('src', '/images/icons/fa/trash.svg');
 		trash.setAttribute('class', 'icon-btn');
 		trash.onclick = () => {
 			const body = document.createElement('p');
@@ -420,6 +461,16 @@ async function modalDialogExample() {
 </script>
 </head>
 <body>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1" width="0" height="0">
+<defs>
+<g id="drag-handle">
+  <line x1="0" x2="8" stroke="black" y1="1" y2="1" stroke-width="2px"></line>
+  <line x1="0" x2="8" stroke="black" y1="5" y2="5" stroke-width="2px"></line>
+  <line x1="0" x2="8" stroke="black" y1="9" y2="9" stroke-width="2px"></line>
+  <line x1="0" x2="8" stroke="black" y1="13" y2="13" stroke-width="2px"></line>
+  <line x1="0" x2="8" stroke="black" y1="17" y2="17" stroke-width="2px"></line>
+</defs>
+</svg>
 <div id="not-current-list" class="butter-bar" style="display: none">
   Bruh. 👋 This isn't the <a class="current-list">current list</a>.
 </div>

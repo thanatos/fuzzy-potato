@@ -1,6 +1,6 @@
 const PRELOADED_X = (function() {
 	const x_img = document.createElement('img');
-	x_img.setAttribute('src', '/images/xmark.svg');
+	x_img.setAttribute('src', '/images/icons/fa/xmark.svg');
 	return x_img;
 })();
 

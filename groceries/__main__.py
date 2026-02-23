@@ -1,14 +1,17 @@
 import argparse
 import asyncio
 import base64
+import dataclasses
 import datetime
 import hashlib
 import json
 import logging
+import os
 from pathlib import Path
 import random
 import socket
 import tomllib
+from typing import Any, Callable, Coroutine, Dict
 
 from aiohttp import web
 from uniseg import graphemecluster
@@ -251,6 +254,63 @@ def cached_svg(path):
     return handler
 
 
+@dataclasses.dataclass
+class CachedAsset:
+    data: bytes
+    content_type: str
+    etag: str
+
+    @staticmethod
+    def from_file(path: Path, content_type: str) -> 'CachedAsset':
+        data = path.read_bytes()
+        etag = gen_etag(data)
+        return CachedAsset(data, content_type, etag)
+
+    def to_response(self) -> web.Response:
+        return web.Response(
+            body=self.data,
+            headers={
+                'Content-Type': self.content_type,
+                'Cache-Control': 'public',
+                'ETag': self.etag,
+            }
+        )
+
+
+def fa_icons() -> Callable[[web.Request], Coroutine[Any, Any, web.Response]]:
+    icons_path = HTML / 'icons' / 'fa'
+
+    cached_assets: Dict[str, CachedAsset] = {}
+
+    for icon_name in os.listdir(icons_path):
+        if not icon_name.endswith('.svg') or icon_name.startswith('.'):
+            pass
+        path = icons_path / icon_name
+        asset = CachedAsset.from_file(path, 'image/svg+xml')
+
+        cached_assets[icon_name] = asset
+
+    async def handler(request) -> web.Response:
+        name = request.match_info['name']
+        asset = cached_assets.get(name)
+        if asset is None:
+            return not_found()
+        else:
+            inm = request.headers.get('If-None-Match')
+            if inm is not None and inm == asset.etag:
+                return web.Response(
+                    status=304,
+                    headers={
+                        'Cache-Control': 'public',
+                        'ETag': asset.etag,
+                    },
+                )
+            else:
+                return asset.to_response()
+
+    return handler
+
+
 def static_js(path):
     async def handler(_req):
         data = path.read_bytes()
@@ -297,12 +357,14 @@ def main():
         web.post('/api/list/', post_list_collection),
         web.get('/api/list/{list_id}', get_list),
         web.post('/api/list/{list_id}', post_list),
-        web.get('/images/caret-up.svg', cached_svg(HTML / 'caret-up.svg')),
-        web.get('/images/caret-down.svg', cached_svg(HTML / 'caret-down.svg')),
-        web.get('/images/trash.svg', cached_svg(HTML / 'trash.svg')),
-        web.get('/images/xmark.svg', cached_svg(HTML / 'xmark.svg')),
-        web.get('/favicon.svg', cached_svg(HTML / 'basket-shopping-🌈.svg')),
+        web.get('/images/icons/fa/{name}', fa_icons()),
+        #web.get('/images/caret-up.svg', cached_svg(HTML / 'caret-up.svg')),
+        #web.get('/images/caret-down.svg', cached_svg(HTML / 'caret-down.svg')),
+        #web.get('/images/trash.svg', cached_svg(HTML / 'trash.svg')),
+        #web.get('/images/xmark.svg', cached_svg(HTML / 'xmark.svg')),
+        web.get('/favicon.svg', cached_svg(HTML / 'icons' / 'basket-shopping-🌈.svg')),
         web.get('/js/dialogs.js', static_js(HTML / 'dialogs.js')),
+        web.get('/js/pricing-dialog.js', static_js(HTML / 'pricing-dialog.js')),
     ])
 
     app.cleanup_ctx.append(db_driver_thunk(config))
